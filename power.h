@@ -1,10 +1,22 @@
 #ifdef DOUBLE_FFTW
+#ifdef ENABLE_MPI
 #include <drfftw_mpi.h>
 #else
+#include <drfftw.h>
+#endif
+#else
+#ifdef ENABLE_MPI
 #include <srfftw_mpi.h>
+#else
+#include <srfftw.h>
+#endif
 #endif
 
+#ifdef ENABLE_MPI
 static rfftwnd_mpi_plan fft_forward_plan, fft_inverse_plan;
+#else
+static rfftwnd_plan fft_forward_plan, fft_inverse_plan;
+#endif
 static int fftsize, maxfftsize;
 static fftw_complex *fft_of_rhogrid;
 
@@ -16,6 +28,8 @@ fftw_real *local_mesh;
 int nx,ny,nz;
 
 void assign_to_mesh(long long, long long, float *, float *, float *, double, int, int, fftw_real *);
+void assign_velocities_to_mesh(long long, long long, float *, float *, float *, float *, float *, float *, double, int, int, fftw_real *);
+
 void calculate_spectrum(int, int, double, fftw_complex *, char *);
 
 /*

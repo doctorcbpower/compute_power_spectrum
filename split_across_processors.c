@@ -6,7 +6,7 @@
 
 #include "header.h"
 
-void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart,float *x, float *y, float *z, double lbox, int Nmesh, int Nslab)
+void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart,float *x, float *y, float *z, float *vx, float *vy, float *vz, double lbox, int Nmesh, int Nslab)
 {
 	int i,j;
 	int nleft[Nslab],nright[Nslab];
@@ -135,21 +135,28 @@ void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart
   fflush(stdout);
   
   float *posx, *posy, *posz;
-  
+  float *velx, *vely, *velz;
+
   posx = (float*)malloc(sizeof(float)*ProcessorCount_Total);
   posy = (float*)malloc(sizeof(float)*ProcessorCount_Total);
   posz = (float*)malloc(sizeof(float)*ProcessorCount_Total);
-    
+  velx = (float*)malloc(sizeof(float)*ProcessorCount_Total);
+  vely = (float*)malloc(sizeof(float)*ProcessorCount_Total);
+  velz = (float*)malloc(sizeof(float)*ProcessorCount_Total);
+
   for(i=0;i<ProcessorCount[ThisTask];i++)
     {
       posx[i]=x[ProcessorID[ThisTask][i]];
       posy[i]=y[ProcessorID[ThisTask][i]];
       posz[i]=z[ProcessorID[ThisTask][i]];
+      velx[i]=vx[ProcessorID[ThisTask][i]];
+      vely[i]=vy[ProcessorID[ThisTask][i]];
+      velz[i]=vz[ProcessorID[ThisTask][i]];
+
     }
 	
   int ProcessorCount_Offset[Nslab];
 	
-  //    ProcessorCount_Offset[ThisTask]=ProcessorCount[ThisTask];
   for(i=0;i<NTask;i++)
 	{
 	ProcessorCount_Offset[i]=ProcessorCount_Received[i];
@@ -203,7 +210,37 @@ void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart
 	  
 	  for(j=0;j<nrec;j++)
 	    posz[j+noffset]=rec[j];
-	  
+	
+      // ... then do vx
+      for(j=0;j<nsend;j++)
+        send[j]=vx[ProcessorID[i][j]];
+            
+      MPI_Sendrecv(send,nsend,MPI_FLOAT,i,ThisTask,
+                   rec,nrec,MPI_FLOAT,i,i,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+            
+      for(j=0;j<nrec;j++)
+        vx[j+noffset]=rec[j];
+
+      // ... then do vy
+      for(j=0;j<nsend;j++)
+        send[j]=vy[ProcessorID[i][j]];
+                  
+      MPI_Sendrecv(send,nsend,MPI_FLOAT,i,ThisTask,
+                   rec,nrec,MPI_FLOAT,i,i,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+        
+      for(j=0;j<nrec;j++)
+        vy[j+noffset]=rec[j];
+
+      // ... then do vz
+      for(j=0;j<nsend;j++)
+        send[j]=vz[ProcessorID[i][j]];
+        
+      MPI_Sendrecv(send,nsend,MPI_FLOAT,i,ThisTask,
+                   rec,nrec,MPI_FLOAT,i,i,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+                  
+      for(j=0;j<nrec;j++)
+        vz[j+noffset]=rec[j];
+
 	  free(send);
 	  free(rec);
 	}
@@ -214,6 +251,9 @@ void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart
       x[i]=posx[i];
       y[i]=posy[i];
       z[i]=posz[i];
+      vx[i]=velx[i];
+      vy[i]=vely[i];
+      vz[i]=velz[i];
     }
   
   *NumPartOnTask=ProcessorCount_Total;
@@ -221,15 +261,22 @@ void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart
   free(posx);
   free(posy);
   free(posz);
-
+    
+  free(velx);
+  free(vely);
+  free(velz);
+    
   free(ProcessorID);
 
   double xc=0.0,yc=0.0,zc=0.0;
   double xmin=1.e10,xmax=0.0,ymin=1.e10,ymax=0.0,zmin=1.e10,zmax=0.0;
-	
+
+  double vxc=0.0,vyc=0.0,vzc=0.0;
+  double vxmin=1.e10,vxmax=0.0,vymin=1.e10,vymax=0.0,vzmin=1.e10,vzmax=0.0;
+
   for(i=0;i<ProcessorCount_Total;i++)
 	{
-		xc+=x[i];
+        xc+=x[i];
 		yc+=y[i];
         zc+=z[i];
         
@@ -239,14 +286,37 @@ void split_across_processors_by_slabs(long long *NumPartOnTask,long long NumPart
         if(y[i]>ymax) ymax=y[i];
         if(z[i]<zmin) zmin=z[i];
         if(z[i]>zmax) zmax=z[i];
+
+        vxc+=vx[i];
+        vyc+=vy[i];
+        vzc+=vz[i];
+        
+        if(vx[i]<vxmin) vxmin=vx[i];
+        if(vx[i]>vxmax) vxmax=vx[i];
+        if(vy[i]<vymin) vymin=vy[i];
+        if(vy[i]>vymax) vymax=vy[i];
+        if(vz[i]<vzmin) vzmin=vz[i];
+        if(vz[i]>vzmax) vzmax=vz[i];
     }
 
-	xc/=ProcessorCount_Total;
-  yc/=ProcessorCount_Total;
-  zc/=ProcessorCount_Total;
-    
-  fprintf(stdout,"Number of particles on Task %d: %d \n",ThisTask,ProcessorCount_Total);
-  fprintf(stdout,"Average position on Task %d: (%f,%f,%f) \n",ThisTask,xc,yc,zc);
-  fprintf(stdout,"Boundaries on Task %d: (%g,%g) \n",ThisTask,xmin,xmax);
-  fflush(stdout);        
+    xc/=ProcessorCount_Total;
+    yc/=ProcessorCount_Total;
+    zc/=ProcessorCount_Total;
+   
+    vxc/=ProcessorCount_Total;
+    vyc/=ProcessorCount_Total;
+    vzc/=ProcessorCount_Total;
+
+    fprintf(stdout,"\nNumber of particles on Task %d: %d \n",ThisTask,ProcessorCount_Total);
+    fprintf(stdout,"Average position on Task %d: (%f,%f,%f) \n",ThisTask,xc,yc,zc);
+    fprintf(stdout,"Average velocity on Task %d: (%f,%f,%f) \n",ThisTask,vxc,vyc,vzc);
+    fprintf(stdout,"Boundaries (x) on Task %d: (%g,%g) \n",ThisTask,xmin,xmax);
+#ifdef DEBUG
+    fprintf(stdout,"Boundaries (y) on Task %d: (%g,%g) \n",ThisTask,ymin,ymax);
+    fprintf(stdout,"Boundaries (z) on Task %d: (%g,%g) \n",ThisTask,zmin,zmax);
+    fprintf(stdout,"Limits (vx) on Task %d: (%g,%g) \n",ThisTask,vxmin,vxmax);
+    fprintf(stdout,"Limits (vy) on Task %d: (%g,%g) \n",ThisTask,vymin,vymax);
+    fprintf(stdout,"Limits (vz) on Task %d: (%g,%g) \n",ThisTask,vzmin,vzmax);
+#endif
+    fflush(stdout);
 }

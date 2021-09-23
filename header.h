@@ -108,11 +108,19 @@ struct sim_info {
 void check_input_filenames(char *, char *, int, int *);
 void read_hdf5_header(char *, struct sim_info *, long long *);
 void read_gadget_binary_header(char *, struct sim_info *, long long *);
-void read_particles_from_hdf5(char *, float *, float *, float *, int *, int, long long *);
-void read_particles_from_gadget_binary(char *, float *, float *, float *, int *, int, long long *);
+void read_particles_from_hdf5(char *, float *, float *, float *, float *, float *, float *, int *, int, long long *);
+void read_float_block_from_hdf5(char *, char *, int, int,
+#ifdef LONGIDS
+                                long long,
+#else
+                                int,
+#endif
+                               float *, float *, float *, long long *);
+
+void read_particles_from_gadget_binary(char *, float *, float *, float *, float *, float *, float *, int *, int, long long *);
 void select_particles(float *, float *, float *, int *, double, long long, float, float, float, float, int, long long *);
 void smooth_to_mesh(long long, float *, float *, float *, float *, float, float, float, float, float, int, int, float *);
-void split_across_processors_by_slabs(long long *,long long,float *, float *, float *, double, int, int);
+void split_across_processors_by_slabs(long long *,long long,float *, float *, float *, float *, float *, float *, double, int, int);
 
 void write_to_ppm(char *, int, int, int, float *);
 

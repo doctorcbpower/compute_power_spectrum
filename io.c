@@ -92,11 +92,13 @@ void read_hdf5_header(char *filename, struct sim_info *header, long long *NumPar
 #endif
   hdf5_status=H5Aclose(hdf5_attribute);
 
-    double dummy[3];
   hdf5_attribute = H5Aopen_name(hdf5_headergrp, "BoxSize");
-  hdf5_status=H5Aread(hdf5_attribute, H5T_NATIVE_DOUBLE, dummy);
+  hdf5_status=H5Aread(hdf5_attribute, H5T_NATIVE_DOUBLE, &(header->BoxSize));
   hdf5_status=H5Aclose(hdf5_attribute);
-    header->BoxSize=dummy[0];
+    
+  hdf5_attribute = H5Aopen_name(hdf5_headergrp, "Time");
+  hdf5_status=H5Aread(hdf5_attribute, H5T_NATIVE_DOUBLE, &(header->time));
+  hdf5_status=H5Aclose(hdf5_attribute);
 
 #ifdef SWIFT
   header->NumFiles=1;
@@ -109,19 +111,15 @@ void read_hdf5_header(char *filename, struct sim_info *header, long long *NumPar
   for(j=0;j<NTYPES;j++)
     {
     *NumPart+=header->nall[j];
-#ifdef ENABLE_MPI
     if(ThisTask==0)
         {
-#endif
 #ifndef LONGIDS
         fprintf(stdout,"Species %u : n_in_file %d\n",j,header->nall[j]);
 #else
         fprintf(stdout,"Species %u : n_in_file %lld\n",j,header->nall[j]);
 #endif
         fflush(stdout);
-#ifdef ENABLE_MPI
         }
-#endif
     }
 
   hdf5_status=H5Gclose(hdf5_headergrp);
@@ -209,18 +207,20 @@ void read_gadget_binary_header(char *filename, struct sim_info *header, long lon
   fclose(infile);
 }
 
-void read_particles_from_hdf5(char *temp, float *x, float *y, float *z, int *ptype, int NumFiles, long long *NThisTask)
+void read_particles_from_hdf5(char *temp, float *x, float *y, float *z, float *vx, float *vy, float *vz, int *ptype, int NumFiles, long long *NThisTask)
 {
     int i,j,k;
     int nfile;
-    float pos[3];
+    float pos[3];   // positions
+    float vel[3];   // velocities
     int nx,ny,nz;
 #ifndef LONGIDS
     int npart[NTYPES];
 #else
     long long npart[NTYPES];
 #endif
-    char filename[132],buffer[132];
+    long long NumInBlock;
+    char filename[132],groupname[132],datasetname[132];
     float *dummy;
         
     for(nfile=0;nfile<NumFiles;nfile++)
@@ -231,9 +231,12 @@ void read_particles_from_hdf5(char *temp, float *x, float *y, float *z, int *pty
         } else {
             sprintf(filename,"%s.hdf5",temp);
         }
+        
         hdf5_file = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
         
+
         hdf5_headergrp = H5Gopen(hdf5_file, "/Header");
+    
 #ifdef SWIFT
         hdf5_attribute = H5Aopen_name(hdf5_headergrp, "NumPart_Total");
 #else
@@ -246,67 +249,91 @@ void read_particles_from_hdf5(char *temp, float *x, float *y, float *z, int *pty
 #endif
         hdf5_status=H5Aclose(hdf5_attribute);
         hdf5_status=H5Gclose(hdf5_headergrp);
-        
+
         for(i = 0; i < NTYPES; i++)
         {
             if(npart[i] > 0)
             {
-                sprintf(buffer, "/PartType%d", i);
-                hdf5_grp = H5Gopen(hdf5_file, buffer);
-                hdf5_dataset = H5Dopen(hdf5_grp, "Coordinates");
-                hdf5_datatype = H5Tcopy(H5T_NATIVE_FLOAT);
-                
-                rank = 2;
-                
-                dims[1] = 3;
-                dims[0] = npart[i];
-                
-                hdf5_dataspace_in_file = H5Screate_simple(rank, dims, NULL);
-                
-                dims[0] = npart[i]/NTask;
-                hdf5_dataspace_in_memory = H5Screate_simple(rank, dims, NULL);
-                
-                start[0]=ThisTask*(npart[i]/NTask);
-                start[1]=0;
-                
-                count[0]= npart[i]/NTask;
-                count[1]= 3;
-                
-                hdf5_status=H5Sselect_hyperslab(hdf5_dataspace_in_file, H5S_SELECT_SET,
-                                                start, NULL, count, NULL);
-                
-                dummy = (float*)malloc(3*sizeof(float)*count[0]);
-                
-                hdf5_status=H5Dread(hdf5_dataset, hdf5_datatype, hdf5_dataspace_in_memory,
-                                    hdf5_dataspace_in_file, H5P_DEFAULT, dummy);
-                
-                k=0;
-                for(j=0;j<count[0];j++)
-                {
-                    x[*NThisTask]=dummy[k];
-                    y[*NThisTask]=dummy[k+1];
-                    z[*NThisTask]=dummy[k+2];
-                    ptype[*NThisTask]=i;
-                    k+=3;
-                    (*NThisTask)++;
-                }
-                free(dummy);
-                
-                hdf5_status=H5Sclose(hdf5_dataspace_in_memory);
-                hdf5_status=H5Sclose(hdf5_dataspace_in_file);
-                hdf5_status=H5Tclose(hdf5_datatype);
-                hdf5_status=H5Dclose(hdf5_dataset);
-                hdf5_status=H5Gclose(hdf5_grp);
+                sprintf(groupname, "/PartType%d", i);
+                // Get positions
+                NumInBlock=*NThisTask;
+                sprintf(datasetname, "Coordinates");
+                read_float_block_from_hdf5(groupname,datasetname,2,3,npart[i],x,y,z,&NumInBlock);
+                // Get velocities
+                NumInBlock=*NThisTask;
+                sprintf(datasetname, "Velocities");
+                read_float_block_from_hdf5(groupname,datasetname,2,3,npart[i],vx,vy,vz,&NumInBlock);
+                    // Assign IDs
+                for(j=*NThisTask;j<NumInBlock;j++) ptype[j]=i;
+                *NThisTask=NumInBlock;
             }
         }
-
         hdf5_status=H5Fclose(hdf5_file);
         
     }
-    
 }
 
-void read_particles_from_gadget_binary(char *temp, float *x, float *y, float *z, int *ptype, int NumFiles, long long *NThisTask)
+// Read in a block of data from an HDF5 file
+void read_float_block_from_hdf5(char *groupname, char *datasetname, int datarank, int datadim,
+#ifdef LONGIDS
+                                long long datasize,
+#else
+                                int datasize,
+#endif
+                                float *varx, float *vary, float *varz, long long *NPartCount)
+{
+    int j,k;
+    float *dummy;
+
+    hdf5_grp = H5Gopen(hdf5_file, groupname);
+    hdf5_dataset = H5Dopen(hdf5_grp, datasetname);
+
+    hdf5_datatype = H5Tcopy(H5T_NATIVE_FLOAT);
+    
+    rank = datarank;
+    
+    dims[1] = datadim;
+    dims[0] = datasize;
+    
+    hdf5_dataspace_in_file = H5Screate_simple(rank, dims, NULL);
+    
+    dims[0] = datasize/NTask;
+    hdf5_dataspace_in_memory = H5Screate_simple(rank, dims, NULL);
+    
+    start[0]=ThisTask*(datasize/NTask);
+    start[1]=0;
+    
+    count[0]= datasize/NTask;
+    count[1]= datadim;
+    
+    hdf5_status=H5Sselect_hyperslab(hdf5_dataspace_in_file, H5S_SELECT_SET,
+                                    start, NULL, count, NULL);
+    
+    dummy = (float*)malloc(dims[1]*sizeof(float)*count[0]);
+    
+    hdf5_status=H5Dread(hdf5_dataset, hdf5_datatype, hdf5_dataspace_in_memory,
+                        hdf5_dataspace_in_file, H5P_DEFAULT, dummy);
+
+    k=0;
+    for(j=0;j<count[0];j++)
+    {
+        varx[*NPartCount]=dummy[k];
+        vary[*NPartCount]=dummy[k+1];
+        varz[*NPartCount]=dummy[k+2];
+        k+=3;
+        (*NPartCount)++;
+    }
+
+    free(dummy);
+    
+    hdf5_status=H5Sclose(hdf5_dataspace_in_memory);
+    hdf5_status=H5Sclose(hdf5_dataspace_in_file);
+    hdf5_status=H5Tclose(hdf5_datatype);
+    hdf5_status=H5Dclose(hdf5_dataset);
+    hdf5_status=H5Gclose(hdf5_grp);
+}
+
+void read_particles_from_gadget_binary(char *temp, float *x, float *y, float *z, float *vx, float *vy, float *vz, int *ptype, int NumFiles, long long *NThisTask)
 {
   int i,j,k;
   int nfile;

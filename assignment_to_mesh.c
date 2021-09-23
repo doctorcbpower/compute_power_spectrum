@@ -178,8 +178,12 @@ void assign_to_mesh(long long NumPart, long long NumPartTot, float *x, float *y,
     }
         
     double global_sum;
-    
+
+#ifdef ENABLE_MPI
     MPI_Reduce(&sum,&global_sum,1,MPI_DOUBLE,MPI_SUM,0,MPI_COMM_WORLD);
+#else
+    global_sum=sum;
+#endif
     
     if(ThisTask==0)
     {

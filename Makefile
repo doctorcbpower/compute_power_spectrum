@@ -72,11 +72,11 @@ endif
 
 OPTS=-lm $(OPT) $(PNG_OPTS) $(HDF5_OPTS)
 
-measure_power_spectrum.exe : measure_power_spectrum.c header.c io.c split_across_processors.c assignment_to_mesh.c calculate_spectrum.c
+measure_power_spectrum.exe : measure_power_spectrum.c header.c io.c split_across_processors.c assignment_to_mesh.c assign_velocities_to_mesh.c calculate_spectrum.c
 ifneq (,$(findstring "magnus",$(shell uname -n)))
-	$(CC) -o measure_power_spectrum.exe -I$(FFTW_INCL) -I$(HDF5_INCL) -I$(PNG_INCL) measure_power_spectrum.c io.c header.c split_across_processors.c assignment_to_mesh.c calculate_spectrum.c -L$(FFTW_LIBS) $(FFTW_OPTS) -L$(PNG_LIBS)  -L$(HDF5_LIBS) $(OPTS) 
+	$(CC) -o measure_power_spectrum.exe -I$(FFTW_INCL) -I$(HDF5_INCL) -I$(PNG_INCL) measure_power_spectrum.c io.c header.c split_across_processors.c assignment_to_mesh.c assign_velocities_to_mesh.c calculate_spectrum.c -L$(FFTW_LIBS) $(FFTW_OPTS) -L$(PNG_LIBS)  -L$(HDF5_LIBS) $(OPTS) 
 else
-	$(CC) -o measure_power_spectrum.exe -I$(FFTW_INCL) -I$(HDF5_INCL) measure_power_spectrum.c io.c header.c split_across_processors.c assignment_to_mesh.c calculate_spectrum.c -L$(FFTW_LIBS) $(FFTW_OPTS) -L$(HDF5_LIBS) $(OPTS) 
+	$(CC) -o measure_power_spectrum.exe -I$(FFTW_INCL) -I$(HDF5_INCL) measure_power_spectrum.c io.c header.c split_across_processors.c assignment_to_mesh.c assign_velocities_to_mesh.c calculate_spectrum.c -L$(FFTW_LIBS) $(FFTW_OPTS) -L$(HDF5_LIBS) $(OPTS) 
 endif
 
 render_image.exe : render_image.c io.c find_neighbours.c make_tree.c walk_tree.c kernels.c split_across_tasks.c select_particles.c header.c smooth_to_mesh.c write_to_ppm.c
